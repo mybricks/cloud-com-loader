@@ -1,0 +1,35 @@
+{
+  "name": "@mybricks/cloud-com-loader",
+  "version": "1.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mybricks/cloud-com-loader.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mybricks/cloud-com-loader/issues"
+  },
+  "homepage": "https://github.com/mybricks/cloud-com-loader#readme",
+  "dependencies": {
+    "@babel/generator": "^7.19.5",
+    "@babel/parser": "^7.19.4",
+    "@babel/traverse": "^7.19.4",
+    "@babel/types": "^7.19.4",
+    "@mybricks/render-web": "^1.0.9"
+  },
+  "devDependencies": {
+    "portfinder-sync": "0.0.2",
+    "webpack-cli": "^4.10.0",
+    "webpack-dev-server": "^4.11.1"
+  }
+}
