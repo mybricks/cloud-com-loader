@@ -1,6 +1,6 @@
 const fs = require("fs");
 const pt = require("path");
-var request = require('request');
+const request = require('request');
 const types = require("@babel/types");
 const parser = require("@babel/parser");
 const { getOptions } = require("loader-utils");
@@ -46,28 +46,28 @@ export default function () {
 };
 
 // import 依赖组件
-function getImportComsCode (deps, tagName) {
+function getImportComsCode (deps) {
   let importComsCode = `
     import ErrorBoundary from "${ErrorBoundary}";
     import renderCom from "${renderCom}";
     const comDefs = {};\n
   `;
 
-  if (Array.isArray(deps)) {
-    deps.forEach(dep => {
-      const { namespace, version } = dep;
-      const CloudComponentName = `CloudComponent${tagName}${namespace}${version}`.replace(/@/g, "").replace(/\./g, "").replace(/-/g, "");
-      const CloudComponentFile = `./com/${CloudComponentName}.js`;
-      const CloudComponentPath = pt.join(__dirname, CloudComponentFile);
+  deps.forEach(dep => {
+    const {
+      version,
+      namespace,
+      CloudComponentName,
+      CloudComponentPath
+    } = dep;
 
-      importComsCode = importComsCode + `
-        import ${CloudComponentName} from "${CloudComponentPath}";
-        comDefs["${namespace}-${version}"] = {
-          runtime: ${CloudComponentName}
-        };\n
-      `
-    })
-  }
+    importComsCode = importComsCode + `
+      import ${CloudComponentName} from "${CloudComponentPath}";
+      comDefs["${namespace}-${version}"] = {
+        runtime: ${CloudComponentName}
+      };\n
+    `
+  })
 
   return importComsCode;
 }
@@ -172,14 +172,18 @@ async function loader (source) {
 
           if (namespace && version) {
             const comsMapKey = `${tagName}${separator}${defValue}`;
-            const CloudComponentName = `CloudComponent${(tagName+defValue).replace(/@/g, "").replace(/\./g, "").replace(/-/g, "")}`;
-            const CloudComponentFile = `./com/${CloudComponentName}.js`;
-            const CloudComponentPath = pt.join(__dirname, CloudComponentFile);
+            const { CloudComponentName, CloudComponentPath } = getCloudComponentInfo({tagName, version, namespace});
 
             node.name.name = CloudComponentName;
 
             if (!importComsMap[comsMapKey]) {
-              importComsMap[comsMapKey] = true;
+              importComsMap[comsMapKey] = {
+                tagName,
+                version,
+                namespace,
+                CloudComponentName,
+                CloudComponentPath
+              };
 
               sourceAst.program.body.unshift(
                 types.importDeclaration(
@@ -208,18 +212,24 @@ async function loader (source) {
     }
   });
 
-  const importComKeys = Object.keys(importComsMap);
+  const deps = Object.keys(importComsMap).map((key) => {
+    return importComsMap[key];
+  });
 
-  await componentLoad(importComKeys);
+  await componentLoad(deps);
 
   // 加载组件资源
-  async function componentLoad (comKeys, isChild = false) {
+  async function componentLoad (deps, isChild = false) {
     return new Promise((resolve, reject) => {
-      Promise.all(comKeys.map(comKey => {
+      Promise.all(deps.map(dep => {
         return new Promise((resolve, reject) => {
-          const [tagName, defValue] = comKey.split(separator);
-          const [namespace, version] = defValue.split("@");
-          const CloudComponentName = `CloudComponent${(tagName+defValue).replace(/@/g, "").replace(/\./g, "").replace(/-/g, "")}`;
+          const {
+            tagName,
+            version,
+            namespace,
+            CloudComponentName,
+            CloudComponentPath
+          } = dep;
 
           if (!globalImportComsMap[tagName]) {
             globalImportComsMap[tagName] = {};
@@ -232,15 +242,13 @@ async function loader (source) {
           }
 
           const ComponentInfo = tagInfo[CloudComponentName];
-          const CloudComponentFile = `./com/${CloudComponentName}.js`;
-          const CloudComponentPath = pt.join(__dirname, CloudComponentFile);
           const comApiParams = `namespace=${namespace}&version=${version}`;
           let comApi = tagNameMap[tagName].api;
 
           comApi = comApi + `${/\?/.test(comApi) ? "&" : "?"}${comApiParams}`;
 
           if (!ComponentInfo.success || !fs.existsSync(CloudComponentPath)) {
-            console.log('加载资源', {tagName, defValue})
+            console.log('加载资源', {tagName, namespace, version})
             // 加载
             request(comApi, function (error, response, body) {
               if (response.statusCode !== 200) {
@@ -255,19 +263,25 @@ async function loader (source) {
                 const rst = JSON.parse(body);
                 const data = rst.data;
                 // 依赖组件数组/运行时代码
-                const { deps, runtime } = data;
+                let { deps, runtime } = data;
 
                 let resultRuntime = runtime.trim();
 
+                if (!Array.isArray(deps)) {
+                  deps = []
+                }
+
                 ComponentInfo.deps = deps;
                 ComponentInfo.success = true;
+
+                const completeDeps = getCompleteDeps(deps, tagName);
 
                 // 区分组件入口
                 if (!isChild) {
                   // TODO 未来搭建的组件应该只有源码？
                   if (resultRuntime.startsWith("function")) {
                     // 源码
-                    resultRuntime = getImportComsCode(deps, tagName) + resultRuntime.replace("function", "function RenderCom") + CloudComponentCode({namespace, version});
+                    resultRuntime = getImportComsCode(completeDeps) + resultRuntime.replace("function", "function RenderCom") + CloudComponentCode({namespace, version});
   
                     fs.writeFileSync(CloudComponentPath, resultRuntime);
                   } else {
@@ -277,7 +291,7 @@ async function loader (source) {
 
                     const resultRuntime = `
                       import RenderCom from "${CloudComponentCodePath}";
-                      ${getImportComsCode(deps, tagName)}
+                      ${getImportComsCode(completeDeps)}
                       ${CloudComponentCode({namespace, version})}
                     `;
 
@@ -287,33 +301,56 @@ async function loader (source) {
                   fs.writeFileSync(CloudComponentPath, resultRuntime);
                 }
 
-                const comKeys = Array.isArray(deps) ? deps.map(({namespace, version}) => {
-                  return `${tagName}${separator}${namespace}@${version}`;
-                }) : [];
-
-                componentLoad(comKeys, true).then(resolve);
+                componentLoad(completeDeps, true).then(resolve);
               }
             })
           } else {
-            console.log('资源已存在', {tagName, defValue})
+            console.log('资源已存在', {tagName, namespace, version})
             const { deps } = ComponentInfo;
 
-            const comKeys = Array.isArray(deps) ? deps.map(({namespace, version}) => {
-              return `${tagName}${separator}${namespace}@${version}`;
-            }) : [];
-
-            componentLoad(comKeys, true).then(resolve);
+            componentLoad(getCompleteDeps(deps, tagName), true).then(resolve);
           }
         })
       })).then(resolve);
     });
   }
 
-  if (importComKeys.length) {
+  let code = source;
+
+  if (deps.length) {
     fs.writeFileSync(comsMapPath, JSON.stringify(globalImportComsMap));
+    code = generator(sourceAst).code
   }
 
-  return generator(sourceAst).code;
+  return code;
+}
+
+function getCloudComponentInfo ({tagName, version, namespace}) {
+  const CloudComponentName = `CloudComponent${(tagName+namespace+version).replace(/@/g, "").replace(/\./g, "").replace(/-/g, "")}`;
+  const CloudComponentFile = `./com/${CloudComponentName}.js`;
+  const CloudComponentPath = pt.join(__dirname, CloudComponentFile);
+
+  return {
+    CloudComponentPath,
+    CloudComponentName
+  } 
+}
+
+function getCompleteDeps (deps, tagName) {
+  if (Array.isArray(deps)) {
+    return deps.map(dep => {
+      const { namespace, version } = dep;
+
+      return {
+        tagName,
+        version,
+        namespace,
+        ...getCloudComponentInfo({tagName, version, namespace})
+      }
+    });
+  }
+
+  return [];
 }
 
 module.exports = loader
