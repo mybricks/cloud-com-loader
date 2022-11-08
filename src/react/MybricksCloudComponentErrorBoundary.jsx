@@ -1,5 +1,5 @@
 import React from "react";
-import { style } from "./const";
+import { style } from "./MybricksCloudComponentConst";
 
 export default class ErrorBoundary extends React.Component {
 

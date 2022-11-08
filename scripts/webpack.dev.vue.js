@@ -1,16 +1,17 @@
 const path = require("path");
 const portFinderSync = require("portfinder-sync");
+const { VueLoaderPlugin } = require("vue-loader");
 
 const port = portFinderSync.getPort(8000);
 
 module.exports = {
   mode: 'development',
-  entry: "./public/app.jsx",
+  entry: "./public/vue/index.js",
   output: {
     filename: "bundle.js"
   },
   resolve: {
-    extensions: ['.js', '.jsx', '.ts', '.tsx'],
+    extensions: ['.js', '.vue', '.ts'],
   },
   stats: {
     colors: true,
@@ -18,14 +19,13 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.jsx?$/,
+        test: /\.vue/,
         use: [
           {
-            loader: 'babel-loader',
+            loader: 'vue-loader',
             options: {
-              presets: ['@babel/preset-env', '@babel/preset-react'],
-              cacheDirectory: true,
-            },
+              hotReload: false
+            }
           },
           // npm run dev，取消注释，填入相应的配置项
           // {
@@ -42,23 +42,28 @@ module.exports = {
           //         defKeyword: "xxx2",
           //         api: "xxx2"
           //       }
-          //     ]
+          //     ],
+          //     type: "vue"
           //   }
           // }
         ],
-        exclude: "/node_modules/"
+        exclude: /node_modules/
       }
     ]
   },
+  plugins: [
+    new VueLoaderPlugin()
+  ],
   devServer: {
     open: false,
     port,
-    host: '0.0.0.0',
+    host: "0.0.0.0",
     static: {
-      directory: './public'
+      directory: "./public"
     }
   },
   externals: [{
+    'vue': "Vue",
     'react': 'React',
     'react-dom': 'ReactDOM'
   }]

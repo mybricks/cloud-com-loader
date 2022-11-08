@@ -1,5 +1,2 @@
-export const style = {
-  fontSize: "12px",
-  color: "#f5222d",
-  overflow: "hidden"
-}
+// 分割符
+exports.separator = "&&**";

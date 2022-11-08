@@ -5,6 +5,6 @@ export default function renderCom (json, opts, comDefs) {
     resolve(renderUI(json, Object.assign({
       env: {},
       comDefs
-    }, opts || {})))
+    }, opts || {})));
   });
 }
